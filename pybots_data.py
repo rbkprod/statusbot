@@ -33,7 +33,7 @@ SLACKUSERS = {}
 class RangeDict(dict):
     """
     extended dict class in order to use ranges as keys
-    stolen from S.O.
+    shamelessly stolen from S.O.
     """
     def __getitem__(self, item):
         if type(item) != range:
@@ -45,10 +45,11 @@ class RangeDict(dict):
 
 POINTS_T = RangeDict({range(20, 31) : 1, range(31, 41) : 2, range(41, 51) : 3,
                       range(51, 61) : 4, range(61, 71) : 5, range(71, 81) : 6,
-                      range(81, 91) : 7, range(91, 100) : 8, range(100,101) : 9})
+                      range(81, 91) : 7, range(91, 100) : 8, range(100, 101) : 9})
 
 def get_credentials():
-    """Gets valid user credentials from storage.
+    """
+    Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
     the OAuth2 flow is completed to obtain the new credentials.
@@ -117,6 +118,7 @@ def process_points(chatstring):
     get_acc = POINTS_T[int(perc)]
     try:
         RDS.hincrby(username, 'points', get_acc)
+        RDS.hset(username, 'infraction', chatstring)
         RDS.hset(username, 'last_updated', datetime.datetime.now())
         return True
     except Exception as incr_error:
