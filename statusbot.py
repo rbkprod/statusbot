@@ -13,10 +13,10 @@ from collections import deque
 import pybots_data
 from slackclient import SlackClient
 
-STATUS_BOT = 'U6VNN4G2D'
+STATUS_BOT = ''
 STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
 #"<@" + os.environ.get('STATUSBOTID') + ">"
-SLACK_CLIENT = SlackClient('xoxb-233770152081-Xbq4NqWfXrGM0ve1nzak64ru')
+SLACK_CLIENT = SlackClient('')
 #SlackClient(os.environ.get('SLACK_CLIENT'))
 
 COMMANDS = ['status', 'help', 'popdb', 'populist']
