@@ -9,14 +9,14 @@ import datetime
 from sys import platform
 import logging
 import threading
-from multiprocessing import process
 from collections import deque
 import pybots_data
 from slackclient import SlackClient
 
-STATUS_BOT_ID = "<@" + '' + ">"
+STATUS_BOT = 'U6VNN4G2D'
+STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
 #"<@" + os.environ.get('STATUSBOTID') + ">"
-SLACK_CLIENT = SlackClient('')
+SLACK_CLIENT = SlackClient('xoxb-233770152081-Xbq4NqWfXrGM0ve1nzak64ru')
 #SlackClient(os.environ.get('SLACK_CLIENT'))
 
 COMMANDS = ['status', 'help', 'popdb', 'populist']
@@ -70,7 +70,7 @@ def conf_logging():
                                 level=logging.DEBUG)
         else:
             logging.basicConfig(format='%(asctime)s %(message)s',
-                                filename='C:/statusbot.log',
+                                filename='C:/temp/statusbot.log',
                                 level=logging.DEBUG)
         logging.info('Logging configured')
     except FileNotFoundError as error:
@@ -197,7 +197,6 @@ def handle_command(command, channel, user_id):
                 requestor_name, is_admin = get_user_info(user_id=temp_user_id)
             else:
                 temp_user_id, is_admin = get_user_info(user_name=otheruser)
-                #temp_user_id = '<@' + temp_user_id.upper() + '>'
                 user_name = otheruser
         if not temp_user_id:
             response = ('The Slack user lookup for *{}* failed. '
@@ -242,13 +241,13 @@ def parse_slack_output(slack_rtm_output):
         for output in output_list:
             if output and 'text' in output:
                 try:
-                    #match_audit = re.search(r'Audit for (.+) is starting', output['text'])
                     match_leech = re.search(r'(.+) has leeched (\d+)', output['text'])
                     if STATUS_BOT_ID in output['text']:
                         return (output['text'].split(STATUS_BOT_ID)[1].strip().lower(),
                                 output['channel'], output['user'])
-                    elif match_leech: #and LEECH_BOT in output['text']:
-                        #if match.group(1) and match.group(2):
+                    elif (match_leech and
+                          output['user'] != STATUS_BOT):
+                          #do not process leech text from statusbot itself
                         print(output['text'])
                         output_list = output['text'].split('\n')
                         for x in output_list:

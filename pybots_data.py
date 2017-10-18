@@ -102,12 +102,21 @@ def get_status(username):
     returns python dictionary of requested user hash
     """
     return RDS.hgetall(username.lower())
-def get_naughty_list(type = 'warning'):
+def weekly_banlist(key = 'defaultkey'):
     """
-    returns all the usernames that need to be issued
-    with a warning
+    adds a user to the ban set
     """
-    pass
+    RDS.sadd('weekly_ban_list', key)
+def banlist(key = 'defaultkey'):
+    """
+    adds a user to the ban set
+    """
+    RDS.sadd('banlist', key)
+def warnlist(key = 'defaultkey'):
+    """
+    adds a user to the warning set
+    """
+    RDS.sadd('warnlist', key)
 def process_points(chatstring):
     """
     increases points for specific user, based on the % value and point lookup in POINTS_T
@@ -120,20 +129,29 @@ def process_points(chatstring):
         RDS.hincrby(username, 'points', get_acc)
         RDS.hset(username, 'infraction', chatstring)
         RDS.hset(username, 'last_updated', datetime.datetime.now())
+        current_points = int(RDS.hget(username, 'points'))
+        if current_points >= 9 and current_points < 18:
+            warnlist(username)
+        elif current_points >= 18 and current_points < 27:
+            weekly_banlist(username)
+        elif current_points >= 27:
+            banlist(username)
         return True
     except Exception as incr_error:
         print('Could not increase points for {} : {}'.format(username, incr_error))
     return False
 
-def populate_db():
+def populate_db(flush = False):
     """
         flushes and populates the redis db
     """
     values = get_data()
     if not values:
         return False
-    rds = redis.Redis(host='localhost', port=6379, password=None)
-    rds.flushdb()
+    #rds = redis.Redis(host='localhost', port=6379, password=None)
+    #rds.flushdb()
+    if flush:
+        RDS.flushdb()
     for row in values:
         usr = row[0].strip().lower()
         infr = "No infraction found"
@@ -143,11 +161,18 @@ def populate_db():
         except IndexError:
             pass
         try:
-            rds.hmset(usr, {'infraction' : infr,
-                            'points' : 0,
+            cud = get_status(usr)
+            cpts = cud.get('points', 0)
+            cinf = cud.get('infraction', infr)
+            cwrn = cud.get('warning', False)
+            if usr == 'ruan.bekker':
+                print('here')
+            #cinf = get_status(usr)
+            RDS.hmset(usr, {'infraction' : cinf,
+                            'points' : cpts,
                             'reason' : 'none',
                             'last_updated' : datetime.datetime.now(),
-                            'warning' : False})
+                            'warning' : cwrn})
         except redis.exceptions.ConnectionError as con_err:
             print('redis db connection failed: ' + con_err)
             return False
