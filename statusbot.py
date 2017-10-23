@@ -6,18 +6,17 @@
 import time
 import re
 import datetime
-from sys import platform
-import logging
+import os
 import threading
 from collections import deque
+import botlogger
+from botlogger import logging
 import pybots_data
 from slackclient import SlackClient
 
-STATUS_BOT = ''
+STATUS_BOT = os.environ.get('STATUSBOTID')
 STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
-#"<@" + os.environ.get('STATUSBOTID') + ">"
-SLACK_CLIENT = SlackClient('')
-#SlackClient(os.environ.get('SLACK_CLIENT'))
+SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 
 COMMANDS = ['status', 'help', 'popdb', 'populist']
 STATUS_COMMAND = "status"
@@ -56,25 +55,6 @@ def process_queue_data(threadname, delay):
                 print('Error processing points for string : {}'.format(chatstring))
                 logging.error('Error processing points for string : {}'.format(chatstring))
                 INFR_QUEUE.remove(chatstring)
-
-def conf_logging():
-    """
-    This function configures a log file.
-    File location will be different depending
-    on which OS is detected
-    """
-    try:
-        if platform == 'linux':
-            logging.basicConfig(format='%(asctime)s %(message)s',
-                                filename='/home/ubuntu/statusbot/statusbot.log',
-                                level=logging.DEBUG)
-        else:
-            logging.basicConfig(format='%(asctime)s %(message)s',
-                                filename='C:/temp/statusbot.log',
-                                level=logging.DEBUG)
-        logging.info('Logging configured')
-    except FileNotFoundError as error:
-        print('Could not configure logging: {}'.format(error))
 def main():
     """
     Starts the bot by connecting to slack using the
@@ -106,6 +86,7 @@ def create_user_list(to_pybots=False):
         pagination in the future
     """
     api_call = SLACK_CLIENT.api_call('users.list', presence=False)
+    logging.info('Creating user list')
     data = {}
     try:
         pybots_data.SLACKUSERS = {}
@@ -116,7 +97,10 @@ def create_user_list(to_pybots=False):
                     user_id = item.get('id')
                     user_name = item.get('name')
                     is_admin = item.get('is_admin')
-                    data[user_id] = [user_name, is_admin]
+                    display_name = item.get('display_name')
+                    deleted = item.get('deleted')
+                    if not deleted:
+                        data[user_id] = [user_name, is_admin, display_name]
             pybots_data.SLACKUSERS = data
             return True
     except IndexError as index_error:
@@ -137,8 +121,10 @@ def get_user_info(**kwargs):
         user_id = user_id.upper()
         #get user from dict based on ID
         user_data = pybots_data.SLACKUSERS.get(user_id)
+        logging.info('get_user_info returned: {} and {}'.format(user_data[0], user_data[1]))
         return(user_data[0], user_data[1])
     elif user_name:
+        logging.info('Attempting to get user by dict values')
         found = False
         for key, value in pybots_data.SLACKUSERS.items():
             for item in value:
@@ -148,6 +134,7 @@ def get_user_info(**kwargs):
                         is_admin = value[1]
                         found = True
             if found:
+                logging.info('get_user_info returned: {} and {}'.format(user_id, is_admin))
                 return (user_id, is_admin)
     return (None, None)
 
@@ -249,6 +236,7 @@ def parse_slack_output(slack_rtm_output):
                           output['user'] != STATUS_BOT):
                           #do not process leech text from statusbot itself
                         print(output['text'])
+                        logging.info(output['text'])
                         output_list = output['text'].split('\n')
                         for x in output_list:
                             match_leech = re.search(r'(.+) has leeched (\d+)', x)
@@ -262,5 +250,5 @@ def parse_slack_output(slack_rtm_output):
                                   (parse_error, output['text']))
     return None, None, None
 if __name__ == "__main__":
-    conf_logging()
+    botlogger.configure()
     main()

@@ -1,12 +1,15 @@
+#!/usr/bin/env python3
 """
     data objects for pyhton bots
 """
 from __future__ import print_function
 import os
 import datetime
+import re
 import httplib2
 import redis
-import re
+import botlogger
+from botlogger import logging
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
@@ -57,6 +60,7 @@ def get_credentials():
     Returns:
         Credentials, the obtained credential.
     """
+    logging.info('Getting google credentials...')
     home_dir = os.path.expanduser('~')
     credential_dir = os.path.join(home_dir, '.credentials')
     if not os.path.exists(credential_dir):
@@ -71,7 +75,7 @@ def get_credentials():
         flow.user_agent = APPLICATION_NAME
         if flags:
             credentials = tools.run_flow(flow, store, flags)
-        print(str(datetime.datetime.today()) + ' Storing credentials to ' + credential_path)
+        logging.info(str(datetime.datetime.today()) + ' Storing credentials to ' + credential_path)
     return credentials
 
 
@@ -94,14 +98,14 @@ def get_data():
             spreadsheetId=spreadsheet_id, range=range_name).execute()
         values = result.get('values', [])
     except Exception as e:
-        print("There was an error opening the gsheet: " + str(e))
+        logging.error('There was an error opening the gsheet: {}'.format(e))
     return values
 
 def get_status(username):
     """
     returns python dictionary of requested user hash
     """
-    return RDS.hgetall(username.lower())
+    return RDS.hgetall(username)
 def weekly_banlist(key = 'defaultkey'):
     """
     adds a user to the ban set
@@ -138,13 +142,14 @@ def process_points(chatstring):
             banlist(username)
         return True
     except Exception as incr_error:
-        print('Could not increase points for {} : {}'.format(username, incr_error))
+        logging.error('Could not increase points for {} : {}'.format(username, incr_error))
     return False
 
 def populate_db(flush = False):
     """
         flushes and populates the redis db
     """
+    logging.info('Populate_db called, getting values from google sheets')
     values = get_data()
     if not values:
         return False
@@ -153,11 +158,10 @@ def populate_db(flush = False):
     if flush:
         RDS.flushdb()
     for row in values:
-        usr = row[0].strip().lower()
-        infr = "No infraction found"
+        usr = row[0].strip()
+        infr = 'No infraction found'
         try:
             infr = row[7]
-            print(str(row[7]))
         except IndexError:
             pass
         try:
@@ -165,8 +169,6 @@ def populate_db(flush = False):
             cpts = cud.get('points', 0)
             cinf = cud.get('infraction', infr)
             cwrn = cud.get('warning', False)
-            if usr == 'ruan.bekker':
-                print('here')
             #cinf = get_status(usr)
             RDS.hmset(usr, {'infraction' : cinf,
                             'points' : cpts,
@@ -174,6 +176,6 @@ def populate_db(flush = False):
                             'last_updated' : datetime.datetime.now(),
                             'warning' : cwrn})
         except redis.exceptions.ConnectionError as con_err:
-            print('redis db connection failed: ' + con_err)
+            logging.error('redis db connection failed: ' + con_err)
             return False
     return True
