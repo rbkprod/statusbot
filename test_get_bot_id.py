@@ -5,7 +5,7 @@ import re
 import os
 import subprocess
 from slackclient import SlackClient
-slack_client = SlackClient('xoxb-233770152081-Xbq4NqWfXrGM0ve1nzak64ru')
+slack_client = SlackClient(os.environ.get('SLACK_CLIENT'))
 api_call = slack_client.api_call('users.list', presence=False)
 users = api_call.get('members')
 def audit_sheet():
