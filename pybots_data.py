@@ -116,6 +116,8 @@ def banlist(key = 'defaultkey'):
     adds a user to the ban set
     """
     RDS.sadd('banlist', key)
+def getwarnlist():
+    return RDS.smembers('warnlist')
 def warnlist(key = 'defaultkey'):
     """
     adds a user to the warning set
@@ -145,7 +147,55 @@ def process_points(chatstring):
         logging.error('Could not increase points for {} : {}'.format(username, incr_error))
     return False
 
-def populate_db(flush = False):
+def populate_db_id(flush = True):
+    """
+        flushes and populates the redis db, using slack ID as
+        the identifier
+    """
+    logging.info('Populate_db called, getting values from google sheets')
+    values = get_data()
+    if not values:
+        return False
+    #rds = redis.Redis(host='localhost', port=6379, password=None)
+    #rds.flushdb()
+    if flush:
+        RDS.flushdb()
+        for row in values:
+            usr = row[0].strip()
+            infr = 'No infraction found'
+            user_id = row[7]
+            if not user_id.startswith('missmatch'):
+                try:
+                    #cinf = get_status(usr)
+                    RDS.hmset(user_id, {'infraction' : infr,
+                                        'points' : 0,
+                                        'last_updated' : datetime.datetime.now(),
+                                        'warning' : False,
+                                        'username' : usr})
+                except redis.exceptions.ConnectionError as con_err:
+                    logging.error('redis db connection failed: ' + con_err)
+                    return False
+    else:
+        for row in values:
+            usr = row[0].strip()
+            infr = 'No infraction found'
+            user_id = row[7]
+            try:
+                cud = get_status(user_id)
+                cpts = cud.get('points', 0)
+                cinf = cud.get('infraction', infr)
+                cwrn = cud.get('warning', False)
+                RDS.hmset(usr, {'infraction' : cinf,
+                                'points' : cpts,
+                                'reason' : 'none',
+                                'last_updated' : datetime.datetime.now(),
+                                'warning' : cwrn})
+            except redis.exceptions.ConnectionError as con_err:
+                logging.error('redis db connection failed: ' + con_err)
+                return False
+    return True
+
+def populate_db(flush=False):
     """
         flushes and populates the redis db
     """
