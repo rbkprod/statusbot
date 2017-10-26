@@ -1,12 +1,15 @@
+#!/usr/bin/env python3
 """
     data objects for pyhton bots
 """
 from __future__ import print_function
 import os
 import datetime
+import re
 import httplib2
 import redis
-import re
+import botlogger
+from botlogger import logging
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
@@ -33,7 +36,7 @@ SLACKUSERS = {}
 class RangeDict(dict):
     """
     extended dict class in order to use ranges as keys
-    stolen from S.O.
+    shamelessly stolen from S.O.
     """
     def __getitem__(self, item):
         if type(item) != range:
@@ -45,10 +48,11 @@ class RangeDict(dict):
 
 POINTS_T = RangeDict({range(20, 31) : 1, range(31, 41) : 2, range(41, 51) : 3,
                       range(51, 61) : 4, range(61, 71) : 5, range(71, 81) : 6,
-                      range(81, 91) : 7, range(91, 100) : 8, range(100,101) : 9})
+                      range(81, 91) : 7, range(91, 100) : 8, range(100, 101) : 9})
 
 def get_credentials():
-    """Gets valid user credentials from storage.
+    """
+    Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
     the OAuth2 flow is completed to obtain the new credentials.
@@ -56,6 +60,7 @@ def get_credentials():
     Returns:
         Credentials, the obtained credential.
     """
+    logging.info('Getting google credentials...')
     home_dir = os.path.expanduser('~')
     credential_dir = os.path.join(home_dir, '.credentials')
     if not os.path.exists(credential_dir):
@@ -70,7 +75,7 @@ def get_credentials():
         flow.user_agent = APPLICATION_NAME
         if flags:
             credentials = tools.run_flow(flow, store, flags)
-        print(str(datetime.datetime.today()) + ' Storing credentials to ' + credential_path)
+        logging.info(str(datetime.datetime.today()) + ' Storing credentials to ' + credential_path)
     return credentials
 
 
@@ -93,20 +98,31 @@ def get_data():
             spreadsheetId=spreadsheet_id, range=range_name).execute()
         values = result.get('values', [])
     except Exception as e:
-        print("There was an error opening the gsheet: " + str(e))
+        logging.error('There was an error opening the gsheet: {}'.format(e))
     return values
 
 def get_status(username):
     """
     returns python dictionary of requested user hash
     """
-    return RDS.hgetall(username.lower())
-def get_naughty_list(type = 'warning'):
+    return RDS.hgetall(username)
+def weekly_banlist(key = 'defaultkey'):
     """
-    returns all the usernames that need to be issued
-    with a warning
+    adds a user to the ban set
     """
-    pass
+    RDS.sadd('weekly_ban_list', key)
+def banlist(key = 'defaultkey'):
+    """
+    adds a user to the ban set
+    """
+    RDS.sadd('banlist', key)
+def getwarnlist():
+    return RDS.smembers('warnlist')
+def warnlist(key = 'defaultkey'):
+    """
+    adds a user to the warning set
+    """
+    RDS.sadd('warnlist', key)
 def process_points(chatstring):
     """
     increases points for specific user, based on the % value and point lookup in POINTS_T
@@ -117,36 +133,99 @@ def process_points(chatstring):
     get_acc = POINTS_T[int(perc)]
     try:
         RDS.hincrby(username, 'points', get_acc)
+        RDS.hset(username, 'infraction', chatstring)
         RDS.hset(username, 'last_updated', datetime.datetime.now())
+        current_points = int(RDS.hget(username, 'points'))
+        if current_points >= 9 and current_points < 18:
+            warnlist(username)
+        elif current_points >= 18 and current_points < 27:
+            weekly_banlist(username)
+        elif current_points >= 27:
+            banlist(username)
         return True
     except Exception as incr_error:
-        print('Could not increase points for {} : {}'.format(username, incr_error))
+        logging.error('Could not increase points for {} : {}'.format(username, incr_error))
     return False
 
-def populate_db():
+def populate_db_id(flush = True):
     """
-        flushes and populates the redis db
+        flushes and populates the redis db, using slack ID as
+        the identifier
     """
+    logging.info('Populate_db called, getting values from google sheets')
     values = get_data()
     if not values:
         return False
-    rds = redis.Redis(host='localhost', port=6379, password=None)
-    rds.flushdb()
+    #rds = redis.Redis(host='localhost', port=6379, password=None)
+    #rds.flushdb()
+    if flush:
+        RDS.flushdb()
+        for row in values:
+            usr = row[0].strip()
+            infr = 'No infraction found'
+            user_id = row[7]
+            if not user_id.startswith('missmatch'):
+                try:
+                    #cinf = get_status(usr)
+                    RDS.hmset(user_id, {'infraction' : infr,
+                                        'points' : 0,
+                                        'last_updated' : datetime.datetime.now(),
+                                        'warning' : False,
+                                        'username' : usr})
+                except redis.exceptions.ConnectionError as con_err:
+                    logging.error('redis db connection failed: ' + con_err)
+                    return False
+    else:
+        for row in values:
+            usr = row[0].strip()
+            infr = 'No infraction found'
+            user_id = row[7]
+            try:
+                cud = get_status(user_id)
+                cpts = cud.get('points', 0)
+                cinf = cud.get('infraction', infr)
+                cwrn = cud.get('warning', False)
+                RDS.hmset(usr, {'infraction' : cinf,
+                                'points' : cpts,
+                                'reason' : 'none',
+                                'last_updated' : datetime.datetime.now(),
+                                'warning' : cwrn})
+            except redis.exceptions.ConnectionError as con_err:
+                logging.error('redis db connection failed: ' + con_err)
+                return False
+    return True
+
+def populate_db(flush=False):
+    """
+        flushes and populates the redis db
+    """
+    logging.info('Populate_db called, getting values from google sheets')
+    values = get_data()
+    if not values:
+        return False
+    #rds = redis.Redis(host='localhost', port=6379, password=None)
+    #rds.flushdb()
+    if flush:
+        RDS.flushdb()
     for row in values:
-        usr = row[0].strip().lower()
-        infr = "No infraction found"
+        usr = row[0].strip()
+        infr = 'No infraction found'
         try:
             infr = row[7]
-            print(str(row[7]))
         except IndexError:
             pass
         try:
-            rds.hmset(usr, {'infraction' : infr,
-                            'points' : 0,
+            cud = get_status(usr)
+            cpts = cud.get('points', 0)
+            cinf = cud.get('infraction', infr)
+            cwrn = cud.get('warning', False)
+            #cinf = get_status(usr)
+            RDS.hmset(usr, {'infraction' : cinf,
+                            'points' : cpts,
                             'reason' : 'none',
                             'last_updated' : datetime.datetime.now(),
-                            'warning' : False})
+                            'warning' : cwrn})
         except redis.exceptions.ConnectionError as con_err:
-            print('redis db connection failed: ' + con_err)
+            logging.error('redis db connection failed: ' + con_err)
             return False
     return True
