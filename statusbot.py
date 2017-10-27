@@ -16,6 +16,7 @@ from slackclient import SlackClient
 
 STATUS_BOT = os.environ.get('STATUSBOTID')
 STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
+LEECH_BOT = 'U6ESUDNHE'
 SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 
 COMMANDS = ['status', 'help', 'popdb', 'populist']
@@ -48,13 +49,10 @@ def process_queue_data(threadname, delay):
                 threadname, delay, chatstring), end='\n')
             logging.info('Thread: {}. Delay: {}. First Index: {}'.format(
                 threadname, delay, chatstring))
-            if pybots_data.process_points(chatstring):
-                time.sleep(0.5)
-                INFR_QUEUE.remove(chatstring)
-            else:
-                print('Error processing points for string : {}'.format(chatstring))
-                logging.error('Error processing points for string : {}'.format(chatstring))
-                INFR_QUEUE.remove(chatstring)
+            pybots_data.process_points(chatstring)
+            time.sleep(0.5)
+            INFR_QUEUE.remove(chatstring)
+
 def main():
     """
     Starts the bot by connecting to slack using the
@@ -97,14 +95,12 @@ def create_user_list(to_pybots=False):
                     user_id = item.get('id')
                     user_name = item.get('name')
                     is_admin = item.get('is_admin')
-                    display_name = item.get('display_name')
                     deleted = item.get('deleted')
                     if not deleted:
-                        data[user_id] = [user_name, is_admin, display_name]
+                        data[user_id] = [user_name, is_admin]
             pybots_data.SLACKUSERS = data
             return True
     except IndexError as index_error:
-        print('Error in create_user_list: {}'.format(index_error))
         logging.error('Error in create_user_list: {}'.format(index_error))
         return False
 def get_user_info(**kwargs):
@@ -150,13 +146,10 @@ def handle_command(command, channel, user_id):
                  command + ', finding user name of requestor...')
     requestor_name, is_admin = get_user_info(user_id=user_id)
     print('done, user name is: ' + requestor_name)
-    logging.info('done, user name is: ' + requestor_name)
     response = 'Not a valid command, why don''t you try `help`'
     if command.startswith(HELP_COMMAND):
         response = ('Commands available: \r\n'
                     '`help`: this menu\r\n'
-                    #'`popdb`: flush and re-populate db data\r\n'
-                    #'`populist`: flush and re-populate the slack user list\r\n'
                     '`status` [username] : checks the status for username'
                     ', if no username specified, the username of the caller is used\r\n'
                    )
@@ -172,37 +165,27 @@ def handle_command(command, channel, user_id):
         if not is_admin and requestor_name != 'ruan.bekker':
             response = 'Only admins can do that.'
         else:
-            if pybots_data.populate_db():
+            if pybots_data.populate_db_id(False):
                 response = ':white_check_mark: redis db populated.'
             else:
-                response = 'Something went wrong, check logs'
+                response = 'Something went wrong, check logs.'
     if command.startswith(STATUS_COMMAND):
         otheruser = command.split('status')[1].strip()
         if otheruser:
-            if '<@' in otheruser:
-                temp_user_id = re.sub(r'[<@>]', '', otheruser)
-                requestor_name, is_admin = get_user_info(user_id=temp_user_id)
-            else:
-                temp_user_id, is_admin = get_user_info(user_name=otheruser)
-                user_name = otheruser
-        if not temp_user_id:
-            response = ('The Slack user lookup for *{}* failed. '
-                        'Please ensure to use a valid user name'.format(user_name))
-        else:
-            try:
-                inf_data = pybots_data.get_status(requestor_name)
-                last_updated = str(inf_data.get('last_updated', '`Error retrieving last updated`'))
-                infraction = ('`' + inf_data.get('infraction', '`Error retrieving infraction`') + '`' +
-                            '. *Points:* ' + '`' + inf_data.get('points', '`Error retrieving points`')
-                            + '`' + '. *Last upated:* ' + '`' +  last_updated[:20] + '`')
-                if inf_data.get('reason') != 'none':
-                    infraction = (infraction + '. *Reason:* ' + inf_data.get('reason'))
-            except TypeError as err:
-                infraction = ('Status not found, the most likely cause is a missmatch '
-                            'between the Google Sheet & Slack *usernames*.')
-                print('Error message received : {}'.format(err))
-                logging.error('Error message received : {}'.format(err))
-            response = '*Status* for <@{}> : {}'.format(temp_user_id.upper(), infraction)
+            temp_user_id = re.sub(r'[<@>]', '', otheruser).upper()
+        try:
+            inf_data = pybots_data.get_status_by_id(temp_user_id)
+            last_updated = str(inf_data.get('last_updated', '`Error retrieving last updated`'))
+            infraction = ('`' + inf_data.get('infraction', '`Error retrieving infraction`') + '`' +
+                        '. *Points:* ' + '`' + inf_data.get('points', '`Error retrieving points`')
+                        + '`' + '. *Last upated:* ' + '`' +  last_updated[:20] + '`')
+        except TypeError as err:
+            infraction = ('Status not found, the most likely cause is a missmatch '
+                        'between the Google Sheet & Slack *usernames*.')
+            print('Error message received : {}'.format(err))
+            logging.error('Error message received : {}'.format(err))
+        response = '*Status* for <@{}> : {}'.format(temp_user_id.upper(), infraction)
+    
     print(str(datetime.datetime.today()) + ' Sending response to SlackClient...', end=' ')
     logging.info(str(datetime.datetime.today()) + ' Sending response to SlackClient...')
     SLACK_CLIENT.api_call("chat.postMessage", channel=channel, text=response, as_user=True)
@@ -233,7 +216,8 @@ def parse_slack_output(slack_rtm_output):
                         return (output['text'].split(STATUS_BOT_ID)[1].strip().lower(),
                                 output['channel'], output['user'])
                     elif (match_leech and
-                          output['user'] != STATUS_BOT):
+                          output['user'] != STATUS_BOT
+                          and output['user'] == LEECH_BOT):
                           #do not process leech text from statusbot itself
                         print(output['text'])
                         logging.info(output['text'])

@@ -35,6 +35,8 @@ def test_user(userinfo):
 def main():
     if api_call.get('ok'):
         #audit_sheet()
-        test_user('zeteny')
+        test_user('leech_detector')
+    else:
+        print('There was a problem connecting to the slack client')
 if __name__ == "__main__":
     main()

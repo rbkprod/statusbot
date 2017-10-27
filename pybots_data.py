@@ -28,7 +28,7 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'Google Sheets API Python Quickstart'
 
-POOL = redis.ConnectionPool(host='localhost', decode_responses=True, port=6379, db=0)
+POOL = redis.ConnectionPool(host='localhost', decode_responses=True, port=6379, db=1)
 RDS = redis.StrictRedis(connection_pool=POOL)
 
 SLACKUSERS = {}
@@ -101,7 +101,7 @@ def get_data():
         logging.error('There was an error opening the gsheet: {}'.format(e))
     return values
 
-def get_status(username):
+def get_status_by_id(username):
     """
     returns python dictionary of requested user hash
     """
@@ -129,23 +129,25 @@ def process_points(chatstring):
     """
     match = re.search(r'(.+) has leeched (\d+)', chatstring)
     username, perc = match.group(1), match.group(2)
-
     get_acc = POINTS_T[int(perc)]
     try:
-        RDS.hincrby(username, 'points', get_acc)
-        RDS.hset(username, 'infraction', chatstring)
-        RDS.hset(username, 'last_updated', datetime.datetime.now())
-        current_points = int(RDS.hget(username, 'points'))
-        if current_points >= 9 and current_points < 18:
-            warnlist(username)
-        elif current_points >= 18 and current_points < 27:
-            weekly_banlist(username)
-        elif current_points >= 27:
-            banlist(username)
-        return True
+        slack_id = RDS.get(username)
+        if slack_id:
+            RDS.hincrby(slack_id, 'points', get_acc)
+            RDS.hset(slack_id, 'infraction', chatstring)
+            RDS.hset(slack_id, 'last_updated', datetime.datetime.now())
+            current_points = int(RDS.hget(slack_id, 'points'))
+            if current_points >= 9 and current_points < 18:
+                warnlist(slack_id)
+            elif current_points >= 18 and current_points < 27:
+                weekly_banlist(slack_id)
+            elif current_points >= 27:
+                banlist(slack_id)
+        else:
+            RDS.sadd('problemlist', username)
+            raise ValueError('Slack ID not found')
     except Exception as incr_error:
         logging.error('Could not increase points for {} : {}'.format(username, incr_error))
-    return False
 
 def populate_db_id(flush = True):
     """
@@ -156,76 +158,42 @@ def populate_db_id(flush = True):
     values = get_data()
     if not values:
         return False
-    #rds = redis.Redis(host='localhost', port=6379, password=None)
-    #rds.flushdb()
     if flush:
         RDS.flushdb()
         for row in values:
-            usr = row[0].strip()
-            infr = 'No infraction found'
-            user_id = row[7]
+            user_id = row[7].strip()
             if not user_id.startswith('missmatch'):
                 try:
                     #cinf = get_status(usr)
-                    RDS.hmset(user_id, {'infraction' : infr,
+                    RDS.hmset(user_id, {'infraction' : 'No infraction found',
                                         'points' : 0,
                                         'last_updated' : datetime.datetime.now(),
                                         'warning' : False,
-                                        'username' : usr})
+                                        'username' : row[0].strip(),
+                                        'instagram_handle' : row[8].strip()})
+                    RDS.set(row[8].strip(), user_id)
+                except IndexError as indx_err:
+                    logging.error('error adding user : {} to redis : {}'
+                                  .format(row[0].strip(), indx_err))
                 except redis.exceptions.ConnectionError as con_err:
                     logging.error('redis db connection failed: ' + con_err)
                     return False
     else:
         for row in values:
-            usr = row[0].strip()
-            infr = 'No infraction found'
-            user_id = row[7]
+            user_id = row[7].strip()
             try:
-                cud = get_status(user_id)
+                cud = get_status_by_id(user_id)
                 cpts = cud.get('points', 0)
-                cinf = cud.get('infraction', infr)
+                cinf = cud.get('infraction', 'No infraction found')
                 cwrn = cud.get('warning', False)
-                RDS.hmset(usr, {'infraction' : cinf,
+                RDS.hmset(user_id, {'infraction' : cinf,
                                 'points' : cpts,
-                                'reason' : 'none',
                                 'last_updated' : datetime.datetime.now(),
-                                'warning' : cwrn})
+                                'warning' : cwrn,
+                                'username' : row[0].strip(),
+                                'instagram_handle' : row[8].strip()})
+                RDS.set(row[8].strip(), user_id)
             except redis.exceptions.ConnectionError as con_err:
                 logging.error('redis db connection failed: ' + con_err)
                 return False
-    return True
-
-def populate_db(flush=False):
-    """
-        flushes and populates the redis db
-    """
-    logging.info('Populate_db called, getting values from google sheets')
-    values = get_data()
-    if not values:
-        return False
-    #rds = redis.Redis(host='localhost', port=6379, password=None)
-    #rds.flushdb()
-    if flush:
-        RDS.flushdb()
-    for row in values:
-        usr = row[0].strip()
-        infr = 'No infraction found'
-        try:
-            infr = row[7]
-        except IndexError:
-            pass
-        try:
-            cud = get_status(usr)
-            cpts = cud.get('points', 0)
-            cinf = cud.get('infraction', infr)
-            cwrn = cud.get('warning', False)
-            #cinf = get_status(usr)
-            RDS.hmset(usr, {'infraction' : cinf,
-                            'points' : cpts,
-                            'reason' : 'none',
-                            'last_updated' : datetime.datetime.now(),
-                            'warning' : cwrn})
-        except redis.exceptions.ConnectionError as con_err:
-            logging.error('redis db connection failed: ' + con_err)
-            return False
     return True
