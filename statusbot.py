@@ -5,78 +5,82 @@
 """
 import time
 import re
-import datetime
 import os
-import threading
+from os import path
+import logging
+from sys import platform
+from multiprocessing import Process, Queue
 from collections import deque
-import botlogger
-from botlogger import logging
 import pybots_data
+import process_warnings
 from slackclient import SlackClient
 
 STATUS_BOT = os.environ.get('STATUSBOTID')
 STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
+LEECH_BOT = 'U6ESUDNHE'
 SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 
-COMMANDS = ['status', 'help', 'popdb', 'populist']
+COMMANDS = ['status', 'help', 'popdb', 'populist', 'warnlist', 'wbanlist']
 STATUS_COMMAND = "status"
 HELP_COMMAND = "help"
 POP_DB = "popdb"
 REFULIST_COMMAND = "populist"
+WARNLIST_COMMAND = 'warnlist'
+WEEKLY_BL_COMMAND = 'wbanlist'
 INFR_QUEUE = deque([])
-EXIT_THREAD = False
-class bThread(threading.Thread):
 
-    def __init__(self, threadid, name):
-        threading.Thread.__init__(self)
-        self.threadid = threadid
-        self.name = name
-    def run(self):
-        print('Starting {}'.format(self.name))
-        process_queue_data(self.name, 5)
-        print('Exiting {}'.format(self.name))
-
-def process_queue_data(threadname, delay):
+def write_to_queue(queue, chatstring):
     """
-    this function will process items in the queue
+    adds a infraction string
+    to the queue
     """
-    while not EXIT_THREAD:
-        while len(INFR_QUEUE) <= 0:
-            time.sleep(delay)
-        for chatstring in list(INFR_QUEUE):
-            print('Thread: {}. Delay: {}. First Index: {}'.format(
-                threadname, delay, chatstring), end='\n')
-            logging.info('Thread: {}. Delay: {}. First Index: {}'.format(
-                threadname, delay, chatstring))
-            if pybots_data.process_points(chatstring):
-                time.sleep(0.5)
-                INFR_QUEUE.remove(chatstring)
-            else:
-                print('Error processing points for string : {}'.format(chatstring))
-                logging.error('Error processing points for string : {}'.format(chatstring))
-                INFR_QUEUE.remove(chatstring)
+    queue.put(chatstring)
+    logger.info('Process %s wrote text to queue: %s', os.getpid(), chatstring)
+def read_from_queue(queue):
+    """
+    Gets data from queue and processes the points
+    """
+    #while True:
+    while True:
+        chatstring = queue.get()
+        print('Process %s read text from reader: %s', os.getpid(), chatstring)
+        #logger.info('Process {} read text from reader: {}'.format(os.getpid(), chatstring))
+        match = re.search(r'(.+) has leeched (\d+)', chatstring)
+        username, perc = match.group(1), match.group(2)
+        user_id, pts = pybots_data.process_points(username, perc, chatstring)
+        if pts >= 4:
+            process_warnings.send_message(user_id)
+        time.sleep(0.2)
+        if queue.empty():
+            break
 def main():
     """
     Starts the bot by connecting to slack using the
     SlackClient API
     """
     create_user_list(True)
-    print(str(datetime.datetime.today()) + ' Connecting...', end=' ')
-    logging.info(str(datetime.datetime.today()) + ' Connecting...')
+    print('Connecting...', end=' ')
+    logger.info('Connecting...')
     read_websocket_delay = 1
     if SLACK_CLIENT.rtm_connect():
         print('@statusbot connected and running')
-        logging.info('@statusbot connected and running')
-        rtmthread = bThread(1, 'rtmThread')
-        rtmthread.start()
+        logger.info('@statusbot connected and running')
+        #user_id, pts = pybots_data.process_points('ruan.bekker', '51','test from main')
+        #if pts >= 4:
+        #    process_warnings.send_message(user_id)
         while True:
-            command, channel, user_id = parse_slack_output(SLACK_CLIENT.rtm_read())
+            command, channel, user_id, queue = parse_slack_output(SLACK_CLIENT.rtm_read())
             if command and channel and user_id:
                 if command in COMMANDS or re.search(r'status <@.+', command):
                     handle_command(command, channel, user_id)
+            if queue:
+                logger.info('Processing items in queue')
+                reader_p = Process(target=read_from_queue, args=((queue),))
+                reader_p.start()
+                #reader_p.join()
             time.sleep(read_websocket_delay)
     else:
-        print(str(datetime.datetime.today()) + ' \nConnection failed, please check tokens')
+        print(' \nConnection failed, please check tokens')
 
 def create_user_list(to_pybots=False):
     """
@@ -86,7 +90,7 @@ def create_user_list(to_pybots=False):
         pagination in the future
     """
     api_call = SLACK_CLIENT.api_call('users.list', presence=False)
-    logging.info('Creating user list')
+    logger.info('Creating user list')
     data = {}
     try:
         pybots_data.SLACKUSERS = {}
@@ -97,15 +101,13 @@ def create_user_list(to_pybots=False):
                     user_id = item.get('id')
                     user_name = item.get('name')
                     is_admin = item.get('is_admin')
-                    display_name = item.get('display_name')
                     deleted = item.get('deleted')
                     if not deleted:
-                        data[user_id] = [user_name, is_admin, display_name]
+                        data[user_id] = [user_name, is_admin]
             pybots_data.SLACKUSERS = data
             return True
     except IndexError as index_error:
-        print('Error in create_user_list: {}'.format(index_error))
-        logging.error('Error in create_user_list: {}'.format(index_error))
+        logger.error('Error in create_user_list: %s', index_error)
         return False
 def get_user_info(**kwargs):
     """
@@ -121,10 +123,10 @@ def get_user_info(**kwargs):
         user_id = user_id.upper()
         #get user from dict based on ID
         user_data = pybots_data.SLACKUSERS.get(user_id)
-        logging.info('get_user_info returned: {} and {}'.format(user_data[0], user_data[1]))
+        logger.info('get_user_info returned: %s and %s', user_data[0], user_data[1])
         return(user_data[0], user_data[1])
     elif user_name:
-        logging.info('Attempting to get user by dict values')
+        logger.info('Attempting to get user by dict values')
         found = False
         for key, value in pybots_data.SLACKUSERS.items():
             for item in value:
@@ -134,32 +136,45 @@ def get_user_info(**kwargs):
                         is_admin = value[1]
                         found = True
             if found:
-                logging.info('get_user_info returned: {} and {}'.format(user_id, is_admin))
+                logger.info('get_user_info returned: %s and %s', user_id, is_admin)
                 return (user_id, is_admin)
     return (None, None)
-
 def handle_command(command, channel, user_id):
     """
     Recevies commands from users directed at bot
     """
     time_start = time.time()
     temp_user_id = user_id
-    print(str(datetime.datetime.today()) + ' User id: ' + user_id + ' initaited command: ' +
+    print('User id: ' + user_id + ' initaited command: ' +
           command + ', finding user name of requestor...', end=' ')
-    logging.info(str(datetime.datetime.today()) + ' User id: ' + user_id + ' initaited command: ' +
-                 command + ', finding user name of requestor...')
+    logger.info('User id: %s initaited command: %s' +
+                ' finding user name of requestor...', user_id, command)
     requestor_name, is_admin = get_user_info(user_id=user_id)
     print('done, user name is: ' + requestor_name)
-    logging.info('done, user name is: ' + requestor_name)
     response = 'Not a valid command, why don''t you try `help`'
+    #Refactor this junk!
     if command.startswith(HELP_COMMAND):
         response = ('Commands available: \r\n'
                     '`help`: this menu\r\n'
-                    #'`popdb`: flush and re-populate db data\r\n'
-                    #'`populist`: flush and re-populate the slack user list\r\n'
                     '`status` [username] : checks the status for username'
                     ', if no username specified, the username of the caller is used\r\n'
                    )
+    if command.startswith(WEEKLY_BL_COMMAND):
+        lst = pybots_data.get_list('wban')
+        if len(lst) <= 0:
+            response = 'No users found'
+        else:
+            response = 'The following users are on the weekly ban list:\r\n'
+            for item in lst:
+                response = response + "<@" + item + ">\r\n"
+    if command.startswith(WARNLIST_COMMAND):
+        lst = pybots_data.get_list('warn')
+        if len(lst) <= 0:
+            response = 'No users found'
+        else:
+            response = 'The following users are on the warning list:\r\n'
+            for item in lst:
+                response = response + "<@" + item + ">\r\n"
     if command.startswith(REFULIST_COMMAND):
         if not is_admin and requestor_name != 'ruan.bekker':
             response = 'Only admins can do that.'
@@ -172,48 +187,61 @@ def handle_command(command, channel, user_id):
         if not is_admin and requestor_name != 'ruan.bekker':
             response = 'Only admins can do that.'
         else:
-            if pybots_data.populate_db():
+            if pybots_data.populate_db_id(False):
                 response = ':white_check_mark: redis db populated.'
             else:
-                response = 'Something went wrong, check logs'
+                response = 'Something went wrong, check logs.'
     if command.startswith(STATUS_COMMAND):
         otheruser = command.split('status')[1].strip()
         if otheruser:
-            if '<@' in otheruser:
-                temp_user_id = re.sub(r'[<@>]', '', otheruser)
-                requestor_name, is_admin = get_user_info(user_id=temp_user_id)
-            else:
-                temp_user_id, is_admin = get_user_info(user_name=otheruser)
-                user_name = otheruser
-        if not temp_user_id:
-            response = ('The Slack user lookup for *{}* failed. '
-                        'Please ensure to use a valid user name'.format(user_name))
-        else:
-            try:
-                inf_data = pybots_data.get_status(requestor_name)
+            temp_user_id = re.sub(r'[<@>]', '', otheruser).upper()
+        try:
+            inf_data = pybots_data.get_status_by_id(temp_user_id)
+            if inf_data:
                 last_updated = str(inf_data.get('last_updated', '`Error retrieving last updated`'))
                 infraction = ('`' + inf_data.get('infraction', '`Error retrieving infraction`') + '`' +
-                            '. *Points:* ' + '`' + inf_data.get('points', '`Error retrieving points`')
-                            + '`' + '. *Last upated:* ' + '`' +  last_updated[:20] + '`')
-                if inf_data.get('reason') != 'none':
-                    infraction = (infraction + '. *Reason:* ' + inf_data.get('reason'))
-            except TypeError as err:
-                infraction = ('Status not found, the most likely cause is a missmatch '
-                            'between the Google Sheet & Slack *usernames*.')
-                print('Error message received : {}'.format(err))
-                logging.error('Error message received : {}'.format(err))
-            response = '*Status* for <@{}> : {}'.format(temp_user_id.upper(), infraction)
-    print(str(datetime.datetime.today()) + ' Sending response to SlackClient...', end=' ')
-    logging.info(str(datetime.datetime.today()) + ' Sending response to SlackClient...')
+                              '. *Points:* ' + '`' + inf_data.get('points', '`Error retrieving points`')
+                              + '`' + '. *Last upated:* ' + '`' +  last_updated[:20] + '`')
+            else:
+                raise ValueError('Could not locate user in db')
+        except (Exception) as err:
+            infraction = ('Status not found, the most likely cause is a missmatch '
+                          'between the Google Sheet & Slack *usernames*.')
+            logger.error('Error message received : %s', err)
+        response = '*Status* for <@{}> : {}'.format(temp_user_id.upper(), infraction)
+    print('Sending response to SlackClient...', end=' ')
+    logger.info('Sending response to SlackClient...')
     SLACK_CLIENT.api_call("chat.postMessage", channel=channel, text=response, as_user=True)
     time_end = time.time()
     print('done.')
-    logging.info('done.')
-    print(str(datetime.datetime.today()) + ' Process took : '
+    logger.info('done.')
+    print('Process took : '
           + str(time_end - time_start) + ' seconds.')
-    logging.info(str(datetime.datetime.today()) + ' Process took : '
-                 + str(time_end - time_start) + ' seconds.')
-
+    logger.info('Process took : '
+                + str(time_end - time_start) + ' seconds.')
+def valid_leech_admin(user):
+    """
+    Returns True if user is allowed to add leech
+    """
+    if user != STATUS_BOT and (user == LEECH_BOT or user == 'U5PU8069F'):
+        return True
+    return False
+def handle_leech_text(chatstring, can_add_leech=False):
+    """
+    Tests the string for validity.
+    Returns queue object
+    """
+    match_leech = re.search(r'(.+) has leeched (\d+)', chatstring)
+    if match_leech:
+        queue = Queue()
+        logger.info(chatstring)
+        output_list = chatstring.split('\n')
+        if can_add_leech:
+            for string in output_list:
+                if match_leech.group(1) and match_leech.group(2):
+                    sub_string = re.sub(r' - This.+', '', string)
+                    write_to_queue(queue, sub_string)
+        return queue
 def parse_slack_output(slack_rtm_output):
     """
         The Slack Real Time Messaging API is an events firehose.
@@ -228,27 +256,25 @@ def parse_slack_output(slack_rtm_output):
         for output in output_list:
             if output and 'text' in output:
                 try:
-                    match_leech = re.search(r'(.+) has leeched (\d+)', output['text'])
                     if STATUS_BOT_ID in output['text']:
                         return (output['text'].split(STATUS_BOT_ID)[1].strip().lower(),
-                                output['channel'], output['user'])
-                    elif (match_leech and
-                          output['user'] != STATUS_BOT):
-                          #do not process leech text from statusbot itself
-                        print(output['text'])
-                        logging.info(output['text'])
-                        output_list = output['text'].split('\n')
-                        for x in output_list:
-                            match_leech = re.search(r'(.+) has leeched (\d+)', x)
-                            if match_leech:
-                                if match_leech.group(1) and match_leech.group(2):
-                                    INFR_QUEUE.append(x)
-                        return None, None, None
+                                output['channel'], output['user'], None)
+                    queue = handle_leech_text(output['text'], valid_leech_admin(output['user']))
+                    return None, None, None, queue
                 except Exception as parse_error:
                     print('Error parsing output: {} -> {} '.format(parse_error, output['text']))
-                    logging.error('Error parsing output: {} -> {} '.format
-                                  (parse_error, output['text']))
-    return None, None, None
+                    logger.error('Error parsing output: %s -> %s ',
+                                 parse_error, output['text'])
+    return None, None, None, None
 if __name__ == "__main__":
-    botlogger.configure()
+    #botlogger.configure()
+    filename = '/statusbot.log'
+    file_paths = {'linux' : '/home/ubuntu/statusbot/', 'win32' : 'C:/temp/'}
+    logger = logging.getLogger('statusbot')
+    logger.setLevel(logging.INFO)
+    fh = logging.FileHandler(file_paths.get(platform, path.expanduser('~')) + filename)
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
     main()
