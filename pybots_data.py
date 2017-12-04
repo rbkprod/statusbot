@@ -117,18 +117,13 @@ def get_list(typ='warn'):
     ''warn'' : users on the warning list
     ''wban'' : users on the weekly ban list
     ''ban''  : users on the ban list
+    ''prob'' : users on the problem list
     """
     list_types = {'warn' : 'warnlist', 'wban' : 'weekly_ban_list',
                   'ban' : 'banlist', 'prob' : 'problemlist'}
+    if not list_types.get(typ):
+        raise ValueError('Not a valid dictionary key')
     return RDS.smembers(list_types.get(typ))
-    #if typ == 'warn':
-    #    return RDS.smembers('warnlist')
-    #elif typ == 'wban':
-    #    return RDS.smembers('weekly_ban_list')
-    #elif typ == 'ban':
-    #    return RDS.smembers('banlist')
-    #elif typ == 'prob':
-    #    return RDS.smembers('problemlist')
 def warnlist(key='defaultkey', delete=False):
     """
     adds a user to the warning set
@@ -146,6 +141,7 @@ def process_points(username, perc, chatstring):
         get_acc = POINTS_T[int(perc)]
         slack_id = RDS.get(username)
         if slack_id:
+            old_points = int(RDS.hget(slack_id, 'points'))
             RDS.hincrby(slack_id, 'points', get_acc)
             RDS.hset(slack_id, 'infraction', chatstring)
             RDS.hset(slack_id, 'last_updated', datetime.datetime.now())
@@ -156,6 +152,8 @@ def process_points(username, perc, chatstring):
                 weekly_banlist(slack_id)
             elif current_points >= 27:
                 banlist(slack_id)
+            PYBLOGGER.info('Audit : Points for %s increased from %s to %s',
+                           username, old_points, current_points)
             return (slack_id, get_acc)
         else:
             RDS.sadd('problemlist', username)

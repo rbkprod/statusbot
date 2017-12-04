@@ -1,15 +1,17 @@
+#!/usr/bin/env python3
 """
 Module to send DMs to users, at current will process
 warnings and update user info in redis
 """
-#!/usr/bin/env python3
 import os
-import datetime
 import logging
-from statusbot import pybots_data
+import pybots_data
+#from statusbot import pybots_data
 from slackclient import SlackClient
 
 LOGGER = logging.getLogger('statusbot.process_warnings')
+SEND = False
+UPDATE = False
 
 SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 DEFAULT_WARNING = ('*WARNING*: You have leeched more than *50%* in' +
@@ -29,7 +31,7 @@ def main():
     """
     main function for processing warnings
     """
-    LOGGER.info(str(datetime.datetime.now()) + ' Processing warnings...')
+    LOGGER.info('Processing warnings...')
     users = pybots_data.get_list('warn')
     for user_id in users:
         try:
@@ -40,21 +42,22 @@ def main():
                 response = ('*WARNING*: Please note that your current infraction ' +
                             'level is `' +  status_info.get('points')  +
                             '`, and as such you run the risk of being banned.' +
-                            ' Be sure that you engage with all posts within'+
-                            ' the group you have decided to post into' +
-                            ' by commenting.')
-                send_message(user_id, response)
-                pybots_data.update_user(key=user_id,
-                                        warning=True,
-                                        infraction='Warning Issued.',
-                                        points=status_info.get('points'))
-                pybots_data.warnlist(user_id, True)
+                            ' Be sure to comment on *all* posts within'+
+                            ' the group(s) you have decided to post into.')
+                if SEND:
+                    send_message(user_id, response)
+                if UPDATE:
+                    pybots_data.update_user(key=user_id,
+                                            warning=True,
+                                            infraction='Warning Issued.',
+                                            points=status_info.get('points'))
+                    pybots_data.warnlist(user_id, True)
             else:
                 LOGGER.info('Could not process warning for : %s', user_id)
             print('Processed user : {}'.format(user_id))
         except Exception as err:
             LOGGER.error('There was a problem issuing warnings: %s', err)
-    LOGGER.info(str(datetime.datetime.now()) + 'done')
+    LOGGER.info('done')
 
 if __name__ == "__main__":
     main()
