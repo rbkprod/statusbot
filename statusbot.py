@@ -27,7 +27,7 @@ SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 #on their own can use statusbot configured logging.
 #Can refactor this later if need be
 LOG_FILENAME = '/statusbot.log'
-LOG_PATHS = {'linux' : '/home/ubuntu/statusbot/', 'win32' : 'C:/temp/'}
+LOG_PATHS = {'linux' : '/home/ubuntu/logs/', 'win32' : 'C:/temp/'}
 LOGGER = logging.getLogger('statusbot')
 LOGGER.setLevel(logging.INFO)
 FILE_HANDLE = logging.FileHandler(LOG_PATHS.get(platform, path.expanduser('~')) + LOG_FILENAME)
