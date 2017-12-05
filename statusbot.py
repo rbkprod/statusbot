@@ -20,7 +20,6 @@ STATUS_BOT = os.environ.get('STATUSBOTID')
 STATUS_BOT_ID = "<@" + STATUS_BOT + ">"
 LEECH_BOT = 'U6ESUDNHE'
 SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
-INFR_QUEUE = deque([])
 
 #-----------------------------------------------
 #Bot logging section:
@@ -48,11 +47,9 @@ def read_from_queue(queue):
     """
     Gets data from queue and processes the points
     """
-    #while True:
     while True:
         chatstring = queue.get()
         print('Process %s read text from reader: %s', os.getpid(), chatstring)
-        #LOGGER.info('Process {} read text from reader: {}'.format(os.getpid(), chatstring))
         match = re.search(r'(.+) has leeched (\d+)', chatstring)
         username, perc = match.group(1), match.group(2)
         user_id, pts = pybots_data.process_points(username, perc, chatstring)
@@ -222,6 +219,9 @@ def main():
                     #reader_p.join()
                 time.sleep(read_websocket_delay)
             except Exception as conn_err:
+                #in the event that command handler fails - or that an invalid response
+                #type is sent to slack api, this catch should stop statusbot
+                #from breaking
                 LOGGER.info('Error from inside main() : %s', conn_err)
                 for i in range(0, 4):
                     LOGGER.info('Connection attempt %s', i)

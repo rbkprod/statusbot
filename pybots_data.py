@@ -122,7 +122,7 @@ def get_list(typ='warn'):
     list_types = {'warn' : 'warnlist', 'wban' : 'weekly_ban_list',
                   'ban' : 'banlist', 'prob' : 'problemlist'}
     if not list_types.get(typ):
-        raise ValueError('Not a valid dictionary key')
+        raise ValueError('Not a valid list item')
     return RDS.smembers(list_types.get(typ))
 def warnlist(key='defaultkey', delete=False):
     """

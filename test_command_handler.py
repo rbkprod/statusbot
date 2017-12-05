@@ -21,6 +21,14 @@ def test_call_command():
      #with pytest.raises(IndexError):
      cmd = command_handler.call_command('noncommand', '@CallerID', False)
      assert cmd.startswith('There was a problem')
-def get_list_command():
-    lst = command_handler.call_command('getlist slkdl', '@CallerID', False)
-    assert len(lst) > 0
+def test_get_list_command():
+    #with pytest.raises(ValueError):
+    lst = command_handler.call_command('list slkdl', '@CallerID', False) 
+    assert isinstance(lst, str)
+    lst = command_handler.call_command('list warn', '@CallerId', False)
+    assert lst
+def test_is_valid_command():
+    is_valid = command_handler.is_valid_command('this is not a command')
+    assert not is_valid
+    is_valid = command_handler.is_valid_command('status')
+    assert is_valid
