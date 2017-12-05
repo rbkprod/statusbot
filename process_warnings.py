@@ -4,12 +4,22 @@ Module to send DMs to users, at current will process
 warnings and update user info in redis
 """
 import os
+from os import path
 import logging
-import pybots_data
+from sys import platform
 #from statusbot import pybots_data
+import pybots_data
 from slackclient import SlackClient
 
+LOG_FILENAME = '/process_warnings.log'
+LOG_PATHS = {'linux' : '/home/ubuntu/logs/', 'win32' : 'C:/temp/'}
 LOGGER = logging.getLogger('statusbot.process_warnings')
+LOGGER.setLevel(logging.INFO)
+FILE_HANDLE = logging.FileHandler(LOG_PATHS.get(platform, path.expanduser('~')) + LOG_FILENAME)
+FILE_HANDLE.setLevel(logging.INFO)
+FORMATTER = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+FILE_HANDLE.setFormatter(FORMATTER)
+LOGGER.addHandler(FILE_HANDLE)
 SEND = False
 UPDATE = False
 
