@@ -6,3 +6,6 @@ __pycache__/pybots_data.cpython-36.pyc
 __pycache__/statusbot.cpython-36.pyc
 __pycache__/test_command_handler.cpython-36-PYTEST.pyc
 __pycache__/test_statusbot.cpython-36-PYTEST.pyc
+.cache/v/cache/lastfailed
+*.pyc
+
