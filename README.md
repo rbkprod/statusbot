@@ -1,6 +1,6 @@
 # statusbot
 Python statusbot for Instagram Pod Community
 
-#Requirements
+# Requirements
 -Python 3
 -Redis (defaults to db=1)
