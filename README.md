@@ -15,4 +15,6 @@ Install the following modules via pip
 # Setup
 Create the following environment variables:
 - SLACK_CLIENT='[your api auth key]'
-- STATUS_BOT='[@id of the bot from slack]'
+- STATUSBOTID='[@id of your bot ID from slack]'
+
+Note: Use get_bot_id.py to retrieve the slack ID give app name
