@@ -48,6 +48,12 @@ POINTS_T = RangeDict({range(20, 31) : 1, range(31, 41) : 2, range(41, 51) : 3,
                       range(51, 61) : 4, range(61, 71) : 5, range(71, 81) : 6,
                       range(81, 91) : 7, range(91, 100) : 8, range(100, 101) : 9})
 
+#redis lists are defined by their points
+#if any user should be added/removed from a list
+#use the points to retrieve the relevant list
+REDIS_LISTS = RangeDict({range(9, 18) : 'warnlist', range(18, 27) : 'weekly_ban_list',
+                         range(27, 100) : 'banlist'})
+
 def get_credentials():
     """
     Gets valid user credentials from storage.
@@ -101,42 +107,29 @@ def get_status_by_id(username):
     returns python dictionary of requested user hash
     """
     return RDS.hgetall(username)
-def weekly_banlist(key='defaultkey'):
+def del_user_from_list(slack_id, points):
     """
-    adds a user to the ban set
+    Removes a user from a redis list
     """
-    RDS.sadd('weekly_ban_list', key)
-def banlist(key='defaultkey'):
+    RDS.srem(REDIS_LISTS[points], slack_id)
+def add_user_to_list(slack_id, points):
     """
-    adds a user to the ban set
+    Adds a user to a redis list
     """
-    RDS.sadd('banlist', key)
+    RDS.sadd(REDIS_LISTS[points], slack_id)
 def get_list(typ='warn'):
     """
     Returns the redis list for the following:
     ''warn'' : users on the warning list
     ''wban'' : users on the weekly ban list
     ''ban''  : users on the ban list
+    ''prob'' : users on the problem list
     """
     list_types = {'warn' : 'warnlist', 'wban' : 'weekly_ban_list',
                   'ban' : 'banlist', 'prob' : 'problemlist'}
+    if not list_types.get(typ):
+        raise ValueError('Not a valid list item')
     return RDS.smembers(list_types.get(typ))
-    #if typ == 'warn':
-    #    return RDS.smembers('warnlist')
-    #elif typ == 'wban':
-    #    return RDS.smembers('weekly_ban_list')
-    #elif typ == 'ban':
-    #    return RDS.smembers('banlist')
-    #elif typ == 'prob':
-    #    return RDS.smembers('problemlist')
-def warnlist(key='defaultkey', delete=False):
-    """
-    adds a user to the warning set
-    """
-    if delete:
-        RDS.srem('warnlist', key)
-    else:
-        RDS.sadd('warnlist', key)
 def process_points(username, perc, chatstring):
     """
     increases points for specific user, based on the % value and point lookup in POINTS_T
@@ -146,16 +139,14 @@ def process_points(username, perc, chatstring):
         get_acc = POINTS_T[int(perc)]
         slack_id = RDS.get(username)
         if slack_id:
+            old_points = int(RDS.hget(slack_id, 'points'))
             RDS.hincrby(slack_id, 'points', get_acc)
             RDS.hset(slack_id, 'infraction', chatstring)
             RDS.hset(slack_id, 'last_updated', datetime.datetime.now())
             current_points = int(RDS.hget(slack_id, 'points'))
-            if current_points >= 9 and current_points < 18:
-                warnlist(slack_id)
-            elif current_points >= 18 and current_points < 27:
-                weekly_banlist(slack_id)
-            elif current_points >= 27:
-                banlist(slack_id)
+            add_user_to_list(slack_id, current_points)
+            PYBLOGGER.info('Audit : Points for %s increased from %s to %s',
+                           username, old_points, current_points)
             return (slack_id, get_acc)
         else:
             RDS.sadd('problemlist', username)
@@ -229,7 +220,7 @@ def populate_db_id(flush=False):
                     RDS.set(row[8].strip(), user_id)
                 except IndexError as indx_err:
                     PYBLOGGER.error('error adding user : %s to redis : %s',
-                                        row[0].strip(), indx_err)
+                                    row[0].strip(), indx_err)
                 except redis.exceptions.ConnectionError as con_err:
                     PYBLOGGER.error('redis db connection failed: %s', con_err)
                     return False
