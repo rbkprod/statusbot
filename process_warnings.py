@@ -7,7 +7,6 @@ import os
 from os import path
 import logging
 from sys import platform
-#from statusbot import pybots_data
 import pybots_data
 from slackclient import SlackClient
 
@@ -61,7 +60,7 @@ def main():
                                             warning=True,
                                             infraction='Warning Issued.',
                                             points=status_info.get('points'))
-                    pybots_data.warnlist(user_id, True)
+                    pybots_data.del_user_from_list(user_id, status_info.get('points'))
             else:
                 LOGGER.info('Could not process warning for : %s', user_id)
             print('Processed user : {}'.format(user_id))

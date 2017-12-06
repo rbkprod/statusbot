@@ -10,7 +10,6 @@ from os import path
 import logging
 from sys import platform
 from multiprocessing import Process, Queue
-from collections import deque
 import pybots_data
 import command_handler
 import process_warnings
