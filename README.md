@@ -17,4 +17,4 @@ Create the following environment variables:
 - SLACK_CLIENT='[your api auth key]'
 - STATUSBOTID='[@id of your bot ID from slack]'
 
-Note: Use get_bot_id.py to retrieve the slack ID give app name
+Note: Use get_bot_id.py to retrieve the slack ID given app name

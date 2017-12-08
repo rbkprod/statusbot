@@ -1,5 +1,5 @@
 from collections import namedtuple
-import command_handler
+from statusbot import command_handler
 import pytest
 def test_get_command():
     get_cmd = command_handler.get_command('status @TESTID')

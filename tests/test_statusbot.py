@@ -1,7 +1,7 @@
 import pytest
 import multiprocessing
 from multiprocessing import Process, Queue
-import statusbot
+from statusbot import statusbot
 
 def test_handle_leech_text():
     test_string = 'ruan.bekker has leeched 50%'

@@ -1,6 +1,6 @@
 import random
 import pytest
-import pybots_data
+from statusbot import pybots_data
 
 def test_add_user_to_list():
     #random_id = random.randint(1, 100000)
