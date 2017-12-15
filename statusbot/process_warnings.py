@@ -20,8 +20,8 @@ FILE_HANDLE.setLevel(logging.INFO)
 FORMATTER = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 FILE_HANDLE.setFormatter(FORMATTER)
 LOGGER.addHandler(FILE_HANDLE)
-SEND = False
-UPDATE = False
+SEND = True
+UPDATE = True
 
 SLACK_CLIENT = SlackClient(os.environ.get('SLACK_CLIENT'))
 DEFAULT_WARNING = ('*WARNING*: You have leeched more than *50%* in' +
@@ -37,11 +37,11 @@ def send_message(user_id, response=DEFAULT_WARNING):
     LOGGER.info('Sending %s to user id: %s', response, user_id)
     SLACK_CLIENT.api_call("chat.postMessage", channel=user_id, text=response,
                           as_user=True, username='statusbot')
-def main():
+def run():
     """
     main function for processing warnings
     """
-    LOGGER.info('Processing warnings...')
+    LOGGER.info('Processing warnings started : SEND: %s, UPDATE: %s', SEND, UPDATE)
     users = pybots_data.get_list('warn')
     for user_id in users:
         try:
@@ -69,5 +69,5 @@ def main():
             LOGGER.error('There was a problem issuing warnings: %s', err)
     LOGGER.info('done')
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
