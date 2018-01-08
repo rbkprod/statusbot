@@ -116,6 +116,9 @@ def add_user_to_list(slack_id, points):
     """
     Adds a user to a redis list
     """
+    #first remove user from any other list
+    for dct in REDIS_LISTS:
+        RDS.srem(REDIS_LISTS[dct], slack_id)
     RDS.sadd(REDIS_LISTS[points], slack_id)
 def get_list(typ='warn'):
     """

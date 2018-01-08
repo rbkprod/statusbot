@@ -14,17 +14,22 @@ def test_add_user_to_list():
     pybots_data.add_user_to_list(testid, 27)
     users_in_warn = pybots_data.get_list('ban')
     assert testid in users_in_warn
-
+    pybots_data.add_user_to_list(testid, 12)#add to warn list
+    pybots_data.add_user_to_list(testid, 18)#add to wban list
+    users_in_warn = pybots_data.get_list('warn')
+    assert testid not in users_in_warn
+    users_in_warn = pybots_data.get_list('wban')
+    assert testid in users_in_warn
 def test_del_user_from_list():
-    testid = 'U5YGV864W'
+    testid = 'testid'
     pybots_data.del_user_from_list(testid, 12)
     users_in_warn = pybots_data.get_list('warn')
     assert testid not in users_in_warn
     pybots_data.del_user_from_list(testid, 18)
-    users_in_warn = pybots_data.get_list('warn')
+    users_in_warn = pybots_data.get_list('wban')
     assert testid not in users_in_warn
     pybots_data.del_user_from_list(testid, 27)
-    users_in_warn = pybots_data.get_list('warn')
+    users_in_warn = pybots_data.get_list('ban')
     assert testid not in users_in_warn
     
 #test_add_user_to_list()

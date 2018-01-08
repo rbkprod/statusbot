@@ -30,6 +30,13 @@ DEFAULT_WARNING = ('*WARNING*: You have leeched more than *50%* in' +
                    ' the group(s) you have decided to post into.'+
                    ' You can check your current infraction' +
                    ' level by calling @statusbot status.')
+def report_warnings():
+    lst = pybots_data.get_list('warn')
+    response = 'The following users have been issued warnings:'
+    for i in lst:
+        response = response + ' ' + i
+    send_message('G7A9PQ74G', response)
+    lst = pybots_data.get_list('wban')
 def send_message(user_id, response=DEFAULT_WARNING):
     """
     Sends a DM to the user with text = response

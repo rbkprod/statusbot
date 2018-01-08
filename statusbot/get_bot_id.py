@@ -18,7 +18,7 @@ def audit_sheet(names):
                 print(user.get('name') + '\t' + user.get('id'))
         if not found:
             print(sheet_name + '\tMissmatch')
-def test_user(userinfo):
+def get_user(userinfo):
     found = False
     for user in users:
         if 'name' in user and user.get('name').lower() == userinfo.lower():
@@ -31,5 +31,12 @@ def test_user(userinfo):
             break
     if not found:
         print('Could not find any user with that name')
+def get_channel():
+    found = False
+    api_call = slack_client.api_call('groups.list', exclude_archived=True, exclude_members=True)
+    channels = api_call.get('groups')
+    for ch in channels:
+        if ch.get('name') == 'testchannel':
+            print(ch.get('id'))
 if not api_call.get('ok'):
     print('There was a problem connecting to the slack client')
