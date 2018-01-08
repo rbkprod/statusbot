@@ -37,6 +37,8 @@ def report_warnings():
         response = response + ' ' + i
     send_message('G7A9PQ74G', response)
     lst = pybots_data.get_list('wban')
+    for i in lst:
+        response = 
 def send_message(user_id, response=DEFAULT_WARNING):
     """
     Sends a DM to the user with text = response
