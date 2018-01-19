@@ -70,6 +70,7 @@ def help_command(command=None):
             '`help`: this menu\r\n'
             '`status` [username] : checks the status for username'
             ', if no username specified, the username of the caller is used\r\n'
+            '`list` *[warn, wban, ban]* : list the users on respective list\r\n'
            )
 def get_status(command):
     """
