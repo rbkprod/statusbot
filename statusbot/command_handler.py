@@ -62,7 +62,7 @@ def get_list_command(params):
         return response
     except (ValueError, IndexError) as list_err:
         return (str(list_err))
-def help_command():
+def help_command(command=None):
     """
     Returns help text
     """
@@ -126,7 +126,7 @@ def main():
     """
     # print(call_command('status @U7UQ54876', '@jdhsjdh'))
     print('Testing a basic command...')
-    print(call_command('list sdadasd', 'U5PU8069F', False))
+    print(call_command('help', 'U5PU8069F', False))
 #Commands dictionary, used to get the corresponding function
 #for the command that was issued
 COMMANDS = {'status' : get_status, 'help' : help_command,

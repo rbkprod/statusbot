@@ -32,3 +32,7 @@ def test_is_valid_command():
     assert not is_valid
     is_valid = command_handler.is_valid_command('status')
     assert is_valid
+def test_help_command():
+    help_text = command_handler.call_command('help', '@CallerId', False)
+    is_valid = help_text.startswith('Commands')
+    assert is_valid
